@@ -19,11 +19,6 @@ type Allowlist struct {
 }
 
 // Parse creates an Allowlist from a list of pattern strings.
-// Supported formats:
-//   - "example.com" — exact hostname, any port
-//   - "example.com:5432" — exact hostname, specific port
-//   - "*.corp.local" — wildcard subdomain, any port
-//   - "*.corp.local:443" — wildcard subdomain, specific port
 func Parse(patterns []string) (*Allowlist, error) {
 	if len(patterns) == 0 {
 		return nil, fmt.Errorf("at least one allow pattern is required")
@@ -83,7 +78,6 @@ func parseRule(pattern string) (Rule, error) {
 }
 
 // IsAllowed checks whether a given host:port is permitted by the allowlist.
-// It also checks resolved IPs against blocked ranges.
 func (a *Allowlist) IsAllowed(host, port string) bool {
 	host = strings.ToLower(host)
 
