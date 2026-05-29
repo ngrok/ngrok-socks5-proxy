@@ -26,7 +26,7 @@ One tunnel, many internal destinations. No URL rewriting.
 ## Installation
 
 ```bash
-go install github.com/ngrok/ngrok-forward-proxy/cmd/ngrok-forward-proxy@latest
+go install github.com/ishanj12/ngrok-forward-proxy/cmd/ngrok-forward-proxy@latest
 ```
 
 Or build from source:

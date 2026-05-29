@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ngrok/ngrok-forward-proxy/allowlist"
+	"github.com/ishanj12/ngrok-forward-proxy/allowlist"
 )
 
 // ErrNotAllowed is returned when a target is not in the allowlist.

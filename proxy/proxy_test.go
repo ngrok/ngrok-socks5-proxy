@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ngrok/ngrok-forward-proxy/allowlist"
+	"github.com/ishanj12/ngrok-forward-proxy/allowlist"
 )
 
 func setupTestProxy(t *testing.T, patterns []string) (proxyAddr string, cleanup func()) {

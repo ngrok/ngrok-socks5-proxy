@@ -17,8 +17,8 @@ import (
 	"golang.ngrok.com/ngrok/v2"
 	"gopkg.in/yaml.v3"
 
-	"github.com/ngrok/ngrok-forward-proxy/allowlist"
-	"github.com/ngrok/ngrok-forward-proxy/proxy"
+	"github.com/ishanj12/ngrok-forward-proxy/allowlist"
+	"github.com/ishanj12/ngrok-forward-proxy/proxy"
 )
 
 type config struct {

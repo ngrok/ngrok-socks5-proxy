@@ -1,4 +1,4 @@
-module github.com/ngrok/ngrok-forward-proxy
+module github.com/ishanj12/ngrok-forward-proxy
 
 go 1.26.3
 
