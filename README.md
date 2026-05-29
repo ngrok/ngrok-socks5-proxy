@@ -106,6 +106,7 @@ allow:
 A default config is auto-created on first run at:
 - **macOS**: `~/Library/Application Support/ngrok-forward-proxy/config.yaml`
 - **Linux**: `~/.config/ngrok-forward-proxy/config.yaml`
+- **Windows**: `%AppData%\ngrok-forward-proxy\config.yaml`
 
 ### Subcommands
 
