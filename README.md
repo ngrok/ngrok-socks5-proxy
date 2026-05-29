@@ -1,6 +1,6 @@
 # ngrok-forward-proxy
 
-A SOCKS5/HTTP CONNECT forward proxy that integrates with the [ngrok Go SDK](https://github.com/ngrok/ngrok-go). It lets operators access multiple internal web applications through a single ngrok TCP tunnel — preserving original hostnames so SSO redirects, domain-scoped cookies, and hardcoded URLs all work correctly.
+A SOCKS5/HTTP CONNECT forward proxy that integrates with the [ngrok Go SDK](https://github.com/ngrok/ngrok-go). It lets clients access multiple internal web applications through a single ngrok TCP tunnel — preserving original hostnames so SSO redirects, domain-scoped cookies, and hardcoded URLs all work correctly.
 
 ## The Problem
 
@@ -12,7 +12,7 @@ When accessing internal web apps via ngrok, the hostname changes break things:
 
 ## The Solution
 
-Run a forward proxy inside the customer's network. The operator configures their browser to use the ngrok endpoint as a SOCKS5 proxy. All requests flow through the tunnel with original hostnames intact.
+Run a forward proxy inside the customer's network. The client configures their browser to use the ngrok endpoint as a SOCKS5 proxy. All requests flow through the tunnel with original hostnames intact.
 
 ```
 Browser (proxy: socks5://ngrok-endpoint)
@@ -48,12 +48,6 @@ ngrok-forward-proxy \
   --allow="*.corp.local"
 ```
 
-Or in local mode (no ngrok, for testing):
-
-```bash
-ngrok-forward-proxy --listen 127.0.0.1:9080 --allow="*.corp.local"
-```
-
 ### 2. Generate a PAC file
 
 ```bash
@@ -81,7 +75,7 @@ curl -x socks5h://1.tcp.ngrok.io:12345 http://crm.corp.local/
 | Flag | Required | Default | Description |
 |------|----------|---------|-------------|
 | `--config` | No | `~/.config/ngrok-forward-proxy/config.yaml` | Path to YAML config file |
-| `--authtoken` | Yes* | `$NGROK_AUTHTOKEN` | ngrok auth token (*not needed with `--listen`) |
+| `--authtoken` | Yes | `$NGROK_AUTHTOKEN` | ngrok auth token |
 | `--url` | No | ephemeral TCP | Endpoint URL (e.g., `tcp://1.tcp.ngrok.io:12345`) |
 | `--listen` | No | — | Local address, no ngrok (e.g., `127.0.0.1:9080`) |
 | `--name` | No | — | Label in the ngrok dashboard |
@@ -97,7 +91,7 @@ curl -x socks5h://1.tcp.ngrok.io:12345 http://crm.corp.local/
 ```yaml
 authtoken: "xxx"                          # or use $NGROK_AUTHTOKEN
 url: "tcp://1.tcp.ngrok.io:12345"         # optional: reserved TCP address
-# listen: "127.0.0.1:9080"               # optional: local mode (no ngrok)
+# listen: "127.0.0.1:9080"               # optional: listener mode (no ngrok)
 name: "acme-corp-proxy"                   # optional: dashboard label
 # bindings:                              # optional: endpoint bindings
 #   - "internal"
@@ -147,19 +141,18 @@ A TCP endpoint is used (not HTTP) because SOCKS5 and HTTP CONNECT are raw TCP pr
 
 1. **ngrok authtoken** controls who can create the tunnel
 2. **Allowlist** controls which internal hosts the proxy can reach
-3. **Traffic policies** (optional) can restrict source IPs at the ngrok edge
 
 The proxy logs every connection attempt (target, allowed/denied) for audit.
 
-## Local Testing
+## Point to the proxy from an existing ngrok agent
 
 ```bash
-# Start the proxy
-ngrok-forward-proxy --listen 127.0.0.1:9080 --allow="*.corp.local"
+# Start the proxy and give it a port to listen on
+ngrok-forward-proxy --listen localhost:9080 --allow="*.corp.local"
+
+# Start an ngrok TCP endpoint to point at the proxy
+ngrok tcp 9080
 
 # Test with curl
-curl -x socks5h://127.0.0.1:9080 http://crm.corp.local/
-
-# Or pair with an existing ngrok agent
-ngrok tcp 127.0.0.1:9080
+curl -x socks5h://X.tcp.ngrok.io:XXXXX http://crm.corp.local/
 ```
