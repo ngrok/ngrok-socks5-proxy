@@ -147,22 +147,37 @@ The proxy logs every connection attempt (target, allowed/denied) for audit.
 
 ## Docker
 
-### Build
-
 ```bash
 docker build -t ngrok-forward-proxy .
 ```
 
-### Run
+### With built-in ngrok agent
 
-**On Linux** (production — shares host network and DNS):
+The proxy creates its own ngrok TCP endpoint — no separate agent needed.
+
+```bash
+docker run --rm ngrok-forward-proxy \
+  --authtoken=YOUR_TOKEN \
+  --url=tcp://1.tcp.ngrok.io:12345 \
+  --allow="*.corp.local"
+```
+
+```bash
+curl -x socks5h://1.tcp.ngrok.io:12345 http://crm.corp.local/
+```
+
+### Chain to an existing ngrok agent
+
+The proxy listens on a local port and a separate ngrok agent forwards traffic to it.
+
+**On Linux** (production):
 ```bash
 docker run --rm --network host ngrok-forward-proxy \
   --listen 0.0.0.0:9080 \
   --allow="*.corp.local"
 ```
 
-**On macOS** (testing — requires port mapping and host entries):
+**On macOS** (testing):
 ```bash
 docker run --rm -p 9080:9080 \
   --add-host crm.corp.local:host-gateway \
@@ -172,26 +187,8 @@ docker run --rm -p 9080:9080 \
   --allow="*.corp.local"
 ```
 
-**With built-in ngrok** (no separate agent needed):
+Then point your ngrok agent at the proxy:
 ```bash
-docker run --rm ngrok-forward-proxy \
-  --authtoken=YOUR_TOKEN \
-  --url=tcp://1.tcp.ngrok.io:12345 \
-  --allow="*.corp.local"
-```
-
-Then pair with an ngrok agent or test directly:
-```bash
-curl -x socks5h://localhost:9080 http://crm.corp.local/
-```
-
-## Pair with an existing ngrok agent
-
-```bash
-# Start the proxy
-ngrok-forward-proxy --listen localhost:9080 --allow="*.corp.local"
-
-# Start an ngrok TCP endpoint pointing at the proxy
 ngrok tcp 9080
 
 # Test with curl (use the URL from ngrok output)
