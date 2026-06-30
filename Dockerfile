@@ -6,6 +6,7 @@ COPY . .
 RUN CGO_ENABLED=0 go build -o ngrok-forward-proxy ./cmd/ngrok-forward-proxy/
 
 FROM alpine:3.21
-RUN apk add --no-cache ca-certificates
+RUN apk add --no-cache ca-certificates \
+    && echo "hosts: files dns" > /etc/nsswitch.conf
 COPY --from=builder /app/ngrok-forward-proxy /usr/local/bin/
 ENTRYPOINT ["ngrok-forward-proxy"]

@@ -121,6 +121,11 @@ func (s *Server) dialTarget(ctx context.Context, host, port string) (net.Conn, e
 	return conn, nil
 }
 
+// closeWriter is implemented by connections that support half-close.
+type closeWriter interface {
+	CloseWrite() error
+}
+
 // bridge copies data bidirectionally between two connections.
 func bridge(left, right net.Conn) {
 	var wg sync.WaitGroup
@@ -130,16 +135,16 @@ func bridge(left, right net.Conn) {
 		defer wg.Done()
 		io.Copy(right, left)
 		// Signal to right that we're done writing
-		if tc, ok := right.(*net.TCPConn); ok {
-			tc.CloseWrite()
+		if cw, ok := right.(closeWriter); ok {
+			cw.CloseWrite()
 		}
 	}()
 
 	go func() {
 		defer wg.Done()
 		io.Copy(left, right)
-		if tc, ok := left.(*net.TCPConn); ok {
-			tc.CloseWrite()
+		if cw, ok := left.(closeWriter); ok {
+			cw.CloseWrite()
 		}
 	}()
 
@@ -150,16 +155,23 @@ func bridge(left, right net.Conn) {
 type peekedConn struct {
 	net.Conn
 	first    byte
-	firstRed bool
+	firstRead bool
 }
 
 func (c *peekedConn) Read(p []byte) (int, error) {
-	if !c.firstRed {
-		c.firstRed = true
+	if !c.firstRead {
+		c.firstRead = true
 		p[0] = c.first
 		return 1, nil
 	}
 	return c.Conn.Read(p)
+}
+
+func (c *peekedConn) CloseWrite() error {
+	if cw, ok := c.Conn.(closeWriter); ok {
+		return cw.CloseWrite()
+	}
+	return nil
 }
 
 func isASCII(b byte) bool {
