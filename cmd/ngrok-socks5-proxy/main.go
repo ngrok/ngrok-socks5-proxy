@@ -21,6 +21,9 @@ import (
 	"github.com/ngrok/ngrok-socks5-proxy/proxy"
 )
 
+// version is set at build time via -ldflags "-X main.version=...".
+var version = "dev"
+
 type config struct {
 	Authtoken string   `yaml:"authtoken"`
 	URL       string   `yaml:"url"`
@@ -50,6 +53,9 @@ func main() {
 	// Handle subcommands before flag parsing
 	if len(os.Args) > 1 {
 		switch os.Args[1] {
+		case "version":
+			fmt.Println(version)
+			return
 		case "config":
 			if err := handleConfigCmd(os.Args[2:]); err != nil {
 				fmt.Fprintf(os.Stderr, "error: %v\n", err)
@@ -191,8 +197,10 @@ func run() error {
 		dns        string
 		logLevel   string
 		allows     allowFlag
+		showVer    bool
 	)
 
+	flag.BoolVar(&showVer, "version", false, "print version and exit")
 	flag.StringVar(&configFile, "config", "", "path to YAML config file")
 	flag.StringVar(&authtoken, "authtoken", "", "ngrok authtoken (or set NGROK_AUTHTOKEN)")
 	flag.StringVar(&urlFlag, "url", "", "endpoint URL (e.g., tcp://1.tcp.ngrok.io:12345 or tcp://my-proxy.internal:8080)")
@@ -203,6 +211,11 @@ func run() error {
 	flag.StringVar(&logLevel, "log-level", "", "log level: debug, info, warn, error")
 	flag.Var(&allows, "allow", "hostname pattern to allow (repeatable or comma-separated)")
 	flag.Parse()
+
+	if showVer {
+		fmt.Println(version)
+		return nil
+	}
 
 	// Resolve config file path
 	if configFile == "" {

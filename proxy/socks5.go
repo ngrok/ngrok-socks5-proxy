@@ -29,13 +29,13 @@ const (
 	socks5AddrIPv6   = 0x04
 
 	// Reply codes
-	socks5ReplySuccess         = 0x00
-	socks5ReplyGeneralFailure  = 0x01
-	socks5ReplyNotAllowed      = 0x02
-	socks5ReplyNetUnreachable  = 0x03
-	socks5ReplyHostUnreachable = 0x04
-	socks5ReplyConnRefused     = 0x05
-	socks5ReplyCmdNotSupported = 0x07
+	socks5ReplySuccess          = 0x00
+	socks5ReplyGeneralFailure   = 0x01
+	socks5ReplyNotAllowed       = 0x02
+	socks5ReplyNetUnreachable   = 0x03
+	socks5ReplyHostUnreachable  = 0x04
+	socks5ReplyConnRefused      = 0x05
+	socks5ReplyCmdNotSupported  = 0x07
 	socks5ReplyAddrNotSupported = 0x08
 )
 

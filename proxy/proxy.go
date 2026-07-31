@@ -154,7 +154,7 @@ func bridge(left, right net.Conn) {
 // peekedConn wraps a net.Conn and prepends a single byte that was already read.
 type peekedConn struct {
 	net.Conn
-	first    byte
+	first     byte
 	firstRead bool
 }
 

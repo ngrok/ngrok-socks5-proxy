@@ -237,9 +237,9 @@ func TestSOCKS5_AllowedDomain(t *testing.T) {
 	var targetPort uint16
 	fmt.Sscanf(targetPortStr, "%d", &targetPort)
 
-	req := []byte{0x05, 0x01, 0x00, 0x03}        // VER, CMD=CONNECT, RSV, ATYP=DOMAIN
-	req = append(req, byte(len(targetHost)))       // domain length
-	req = append(req, []byte(targetHost)...)        // domain
+	req := []byte{0x05, 0x01, 0x00, 0x03}    // VER, CMD=CONNECT, RSV, ATYP=DOMAIN
+	req = append(req, byte(len(targetHost))) // domain length
+	req = append(req, []byte(targetHost)...) // domain
 	portBuf := make([]byte, 2)
 	binary.BigEndian.PutUint16(portBuf, targetPort)
 	req = append(req, portBuf...)
@@ -287,10 +287,10 @@ func TestSOCKS5_Denied(t *testing.T) {
 
 	// CONNECT to a domain not on the allowlist
 	domain := "denied.example.com"
-	req := []byte{0x05, 0x01, 0x00, 0x03}     // VER, CMD=CONNECT, RSV, ATYP=DOMAIN
-	req = append(req, byte(len(domain)))        // domain length
-	req = append(req, []byte(domain)...)         // domain
-	req = append(req, 0x01, 0xBB)               // port 443
+	req := []byte{0x05, 0x01, 0x00, 0x03} // VER, CMD=CONNECT, RSV, ATYP=DOMAIN
+	req = append(req, byte(len(domain)))  // domain length
+	req = append(req, []byte(domain)...)  // domain
+	req = append(req, 0x01, 0xBB)         // port 443
 	conn.Write(req)
 
 	// Read reply - expect not allowed

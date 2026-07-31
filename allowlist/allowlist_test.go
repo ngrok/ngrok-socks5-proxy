@@ -124,7 +124,3 @@ func TestMultipleRules(t *testing.T) {
 		t.Error("expected evil.com to be denied")
 	}
 }
-
-
-
-

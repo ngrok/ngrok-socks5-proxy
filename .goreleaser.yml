@@ -1,0 +1,62 @@
+version: 2
+
+project_name: ngrok-socks5-proxy
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: ngrok-socks5-proxy
+    main: ./cmd/ngrok-socks5-proxy/
+    binary: ngrok-socks5-proxy
+    env:
+      - CGO_ENABLED=0
+    mod_timestamp: "{{ .CommitTimestamp }}"
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w -X main.version={{ .Version }}
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+
+archives:
+  - id: ngrok-socks5-proxy
+    ids:
+      - ngrok-socks5-proxy
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    files:
+      - LICENSE
+      - README.md
+      - CHANGELOG.md
+
+checksum:
+  name_template: "{{ .ProjectName }}_{{ .Version }}_SHA256SUMS"
+  algorithm: sha256
+
+snapshot:
+  version_template: "{{ .Tag }}-next"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^ci:"
+
+release:
+  github:
+    owner: ngrok
+    name: ngrok-socks5-proxy
+  draft: false
+  prerelease: auto

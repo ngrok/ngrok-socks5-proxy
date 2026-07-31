@@ -37,6 +37,30 @@ cd ngrok-socks5-proxy
 go build -o ngrok-socks5-proxy ./cmd/ngrok-socks5-proxy/
 ```
 
+### Download a Prebuilt Binary
+
+Prebuilt binaries for Linux, macOS, and Windows (amd64 and arm64) are published
+on the [GitHub Releases page](https://github.com/ngrok/ngrok-socks5-proxy/releases).
+
+```bash
+# Linux/macOS example (adjust OS/ARCH for your platform)
+curl -L -o ngrok-socks5-proxy.tar.gz \
+  https://github.com/ngrok/ngrok-socks5-proxy/releases/latest/download/ngrok-socks5-proxy_<version>_<os>_<arch>.tar.gz
+tar -xzf ngrok-socks5-proxy.tar.gz
+sudo mv ngrok-socks5-proxy /usr/local/bin/
+```
+
+On Windows, download the `.zip` asset from the Releases page, extract it, and
+add the extracted directory to your `PATH`.
+
+Verify a download against the published checksums:
+
+```bash
+curl -L -o ngrok-socks5-proxy_SHA256SUMS \
+  https://github.com/ngrok/ngrok-socks5-proxy/releases/latest/download/ngrok-socks5-proxy_<version>_SHA256SUMS
+sha256sum -c ngrok-socks5-proxy_SHA256SUMS --ignore-missing
+```
+
 ## Quick Start
 
 ### 1. Start the proxy with ngrok

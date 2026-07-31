@@ -93,7 +93,6 @@ func (a *Allowlist) IsAllowed(host, port string) bool {
 	return false
 }
 
-
 func (a *Allowlist) matchHost(rule Rule, host string) bool {
 	if rule.isWildcard {
 		suffix := rule.host[1:] // "*." → ".corp.local"
