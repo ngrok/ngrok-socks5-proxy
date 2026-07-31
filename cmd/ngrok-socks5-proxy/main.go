@@ -17,8 +17,8 @@ import (
 	"golang.ngrok.com/ngrok/v2"
 	"gopkg.in/yaml.v3"
 
-	"github.com/ishanj12/ngrok-forward-proxy/allowlist"
-	"github.com/ishanj12/ngrok-forward-proxy/proxy"
+	"github.com/ngrok/ngrok-socks5-proxy/allowlist"
+	"github.com/ngrok/ngrok-socks5-proxy/proxy"
 )
 
 type config struct {
@@ -375,7 +375,7 @@ func run() error {
 	}
 }
 
-const defaultConfigTemplate = `# ngrok-forward-proxy configuration
+const defaultConfigTemplate = `# ngrok-socks5-proxy configuration
 # Documentation: see DESIGN.md
 
 # ngrok authtoken (or set NGROK_AUTHTOKEN env var)
@@ -416,7 +416,7 @@ func defaultConfigPath() string {
 	if err != nil {
 		return ""
 	}
-	return filepath.Join(configDir, "ngrok-forward-proxy", "config.yaml")
+	return filepath.Join(configDir, "ngrok-socks5-proxy", "config.yaml")
 }
 
 func createDefaultConfig(path string) error {

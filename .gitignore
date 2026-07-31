@@ -1,4 +1,4 @@
-/ngrok-forward-proxy
+/ngrok-socks5-proxy
 proxy.pac
 DESIGN.md
 config.yaml

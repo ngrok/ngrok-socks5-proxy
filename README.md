@@ -1,4 +1,4 @@
-# ngrok-forward-proxy
+# ngrok-socks5-proxy
 
 A SOCKS5/HTTP CONNECT forward proxy that integrates with the [ngrok Go SDK](https://github.com/ngrok/ngrok-go). It lets clients access multiple internal web applications through a single ngrok TCP tunnel — preserving original hostnames so SSO redirects, domain-scoped cookies, and hardcoded URLs all work correctly.
 
@@ -26,15 +26,15 @@ One tunnel, many internal destinations. No URL rewriting.
 ## Installation
 
 ```bash
-go install github.com/ishanj12/ngrok-forward-proxy/cmd/ngrok-forward-proxy@latest
+go install github.com/ngrok/ngrok-socks5-proxy/cmd/ngrok-socks5-proxy@latest
 ```
 
 Or build from source:
 
 ```bash
-git clone https://github.com/ishanj12/ngrok-forward-proxy.git
-cd ngrok-forward-proxy
-go build -o ngrok-forward-proxy ./cmd/ngrok-forward-proxy/
+git clone https://github.com/ngrok/ngrok-socks5-proxy.git
+cd ngrok-socks5-proxy
+go build -o ngrok-socks5-proxy ./cmd/ngrok-socks5-proxy/
 ```
 
 ## Quick Start
@@ -42,7 +42,7 @@ go build -o ngrok-forward-proxy ./cmd/ngrok-forward-proxy/
 ### 1. Start the proxy with ngrok
 
 ```bash
-ngrok-forward-proxy \
+ngrok-socks5-proxy \
   --authtoken=YOUR_TOKEN \
   --url=tcp://1.tcp.ngrok.io:12345 \
   --allow="*.corp.local"
@@ -51,7 +51,7 @@ ngrok-forward-proxy \
 ### 2. Generate a PAC file
 
 ```bash
-ngrok-forward-proxy pac --proxy 1.tcp.ngrok.io:12345 > proxy.pac
+ngrok-socks5-proxy pac --proxy 1.tcp.ngrok.io:12345 > proxy.pac
 ```
 
 ### 3. Configure your browser
@@ -74,7 +74,7 @@ curl -x socks5h://1.tcp.ngrok.io:12345 http://crm.corp.local/
 
 | Flag | Required | Default | Description |
 |------|----------|---------|-------------|
-| `--config` | No | `~/.config/ngrok-forward-proxy/config.yaml` | Path to YAML config file |
+| `--config` | No | `~/.config/ngrok-socks5-proxy/config.yaml` | Path to YAML config file |
 | `--authtoken` | Yes | `$NGROK_AUTHTOKEN` | ngrok auth token |
 | `--url` | No | ephemeral TCP | Endpoint URL (e.g., `tcp://1.tcp.ngrok.io:12345`) |
 | `--listen` | No | — | Local address, no ngrok (e.g., `127.0.0.1:9080`) |
@@ -104,16 +104,16 @@ allow:
 ```
 
 A default config is auto-created on first run at:
-- **macOS**: `~/Library/Application Support/ngrok-forward-proxy/config.yaml`
-- **Linux**: `~/.config/ngrok-forward-proxy/config.yaml`
-- **Windows**: `%AppData%\ngrok-forward-proxy\config.yaml`
+- **macOS**: `~/Library/Application Support/ngrok-socks5-proxy/config.yaml`
+- **Linux**: `~/.config/ngrok-socks5-proxy/config.yaml`
+- **Windows**: `%AppData%\ngrok-socks5-proxy\config.yaml`
 
 ### Subcommands
 
 ```bash
-ngrok-forward-proxy config edit    # Open config in $EDITOR
-ngrok-forward-proxy config path    # Print config file path
-ngrok-forward-proxy pac --proxy HOST:PORT  # Generate PAC file
+ngrok-socks5-proxy config edit    # Open config in $EDITOR
+ngrok-socks5-proxy config path    # Print config file path
+ngrok-socks5-proxy pac --proxy HOST:PORT  # Generate PAC file
 ```
 
 ## Allowlist Patterns

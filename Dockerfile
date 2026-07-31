@@ -3,10 +3,10 @@ WORKDIR /app
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
-RUN CGO_ENABLED=0 go build -o ngrok-forward-proxy ./cmd/ngrok-forward-proxy/
+RUN CGO_ENABLED=0 go build -o ngrok-socks5-proxy ./cmd/ngrok-socks5-proxy/
 
 FROM alpine:3.21
 RUN apk add --no-cache ca-certificates \
     && echo "hosts: files dns" > /etc/nsswitch.conf
-COPY --from=builder /app/ngrok-forward-proxy /usr/local/bin/
-ENTRYPOINT ["ngrok-forward-proxy"]
+COPY --from=builder /app/ngrok-socks5-proxy /usr/local/bin/
+ENTRYPOINT ["ngrok-socks5-proxy"]
