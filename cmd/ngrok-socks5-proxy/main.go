@@ -240,6 +240,9 @@ func run() error {
 	}
 
 	// CLI flags override config file values
+	if urlFlag != "" && listen != "" {
+		return fmt.Errorf("--listen and --url are mutually exclusive")
+	}
 	if authtoken != "" {
 		cfg.Authtoken = authtoken
 	}
