@@ -16,19 +16,24 @@ import (
 // ErrNotAllowed is returned when a target is not in the allowlist.
 var ErrNotAllowed = errors.New("not allowed")
 
+// defaultDialTimeout is used when Config.DialTimeout is unset.
+const defaultDialTimeout = 10 * time.Second
+
 // Config holds the proxy server configuration.
 type Config struct {
-	Allowlist *allowlist.Allowlist
-	Logger    *slog.Logger
-	Resolver  *net.Resolver // optional custom DNS resolver
+	Allowlist   *allowlist.Allowlist
+	Logger      *slog.Logger
+	Resolver    *net.Resolver // optional custom DNS resolver
+	DialTimeout time.Duration // timeout for connecting to targets; defaults to 10s if zero
 }
 
 // Server is an HTTP/SOCKS5 proxy server with hostname allowlisting.
 type Server struct {
-	allowlist *allowlist.Allowlist
-	log       *slog.Logger
-	resolver  *net.Resolver
-	wg        sync.WaitGroup
+	allowlist   *allowlist.Allowlist
+	log         *slog.Logger
+	resolver    *net.Resolver
+	dialTimeout time.Duration
+	wg          sync.WaitGroup
 }
 
 // New creates a new proxy server.
@@ -41,10 +46,15 @@ func New(cfg Config) *Server {
 	if resolver == nil {
 		resolver = net.DefaultResolver
 	}
+	dialTimeout := cfg.DialTimeout
+	if dialTimeout == 0 {
+		dialTimeout = defaultDialTimeout
+	}
 	return &Server{
-		allowlist: cfg.Allowlist,
-		log:       logger,
-		resolver:  resolver,
+		allowlist:   cfg.Allowlist,
+		log:         logger,
+		resolver:    resolver,
+		dialTimeout: dialTimeout,
 	}
 }
 
@@ -110,7 +120,7 @@ func (s *Server) dialTarget(ctx context.Context, host, port string) (net.Conn, e
 
 	addr := net.JoinHostPort(host, port)
 	dialer := &net.Dialer{
-		Timeout:  10 * time.Second,
+		Timeout:  s.dialTimeout,
 		Resolver: s.resolver,
 	}
 	conn, err := dialer.DialContext(ctx, "tcp", addr)

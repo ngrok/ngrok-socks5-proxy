@@ -13,6 +13,7 @@ import (
 	"runtime"
 	"strings"
 	"syscall"
+	"time"
 
 	"golang.ngrok.com/ngrok/v2"
 	"gopkg.in/yaml.v3"
@@ -25,14 +26,15 @@ import (
 var version = "dev"
 
 type config struct {
-	Authtoken string   `yaml:"authtoken"`
-	URL       string   `yaml:"url"`
-	Listen    string   `yaml:"listen"`
-	Name      string   `yaml:"name"`
-	Bindings  []string `yaml:"bindings"`
-	DNS       string   `yaml:"dns"`
-	LogLevel  string   `yaml:"log_level"`
-	Allow     []string `yaml:"allow"`
+	Authtoken   string   `yaml:"authtoken"`
+	URL         string   `yaml:"url"`
+	Listen      string   `yaml:"listen"`
+	Name        string   `yaml:"name"`
+	Bindings    []string `yaml:"bindings"`
+	DNS         string   `yaml:"dns"`
+	LogLevel    string   `yaml:"log_level"`
+	Allow       []string `yaml:"allow"`
+	DialTimeout string   `yaml:"dial_timeout"`
 }
 
 // allowFlag implements flag.Value to support repeated and comma-separated --allow flags.
@@ -188,16 +190,17 @@ func openInEditor(path string) error {
 
 func run() error {
 	var (
-		configFile string
-		authtoken  string
-		urlFlag    string
-		listen     string
-		name       string
-		bindings   allowFlag
-		dns        string
-		logLevel   string
-		allows     allowFlag
-		showVer    bool
+		configFile  string
+		authtoken   string
+		urlFlag     string
+		listen      string
+		name        string
+		bindings    allowFlag
+		dns         string
+		logLevel    string
+		allows      allowFlag
+		showVer     bool
+		dialTimeout string
 	)
 
 	flag.BoolVar(&showVer, "version", false, "print version and exit")
@@ -210,6 +213,7 @@ func run() error {
 	flag.StringVar(&dns, "dns", "", "custom DNS server (e.g., 10.0.0.53:53)")
 	flag.StringVar(&logLevel, "log-level", "", "log level: debug, info, warn, error")
 	flag.Var(&allows, "allow", "hostname pattern to allow (repeatable or comma-separated)")
+	flag.StringVar(&dialTimeout, "dial-timeout", "", "timeout for connecting to targets (default 10s, e.g. 15s, 500ms)")
 	flag.Parse()
 
 	if showVer {
@@ -266,8 +270,20 @@ func run() error {
 	if logLevel != "" {
 		cfg.LogLevel = logLevel
 	}
+	if dialTimeout != "" {
+		cfg.DialTimeout = dialTimeout
+	}
 	// Merge allow flags with config file allows
 	cfg.Allow = append(cfg.Allow, allows...)
+
+	dialTimeoutDuration := time.Duration(0) // 0 means "use proxy's default"
+	if cfg.DialTimeout != "" {
+		d, err := time.ParseDuration(cfg.DialTimeout)
+		if err != nil {
+			return fmt.Errorf("invalid dial-timeout %q: %w", cfg.DialTimeout, err)
+		}
+		dialTimeoutDuration = d
+	}
 
 	// Validate authtoken requirement (not needed in local listen mode)
 	if cfg.Listen == "" {
@@ -298,15 +314,17 @@ func run() error {
 	}
 	logger.Info("allowlist configured", "patterns", cfg.Allow)
 
-	// Set up custom DNS resolver if specified
-	var resolver *net.Resolver
+	// Use Go's pure-Go DNS resolver rather than the OS-native resolver. On
+	// Darwin in particular, the OS-native resolver routes ".local"-suffixed
+	// hostnames (a common internal-domain convention, e.g. "*.corp.local")
+	// through mDNS/Bonjour, adding several seconds of latency per lookup
+	// even when the name is already present in /etc/hosts. PreferGo skips
+	// that path entirely and resolves such names near-instantly.
+	resolver := &net.Resolver{PreferGo: true}
 	if cfg.DNS != "" {
-		resolver = &net.Resolver{
-			PreferGo: true,
-			Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
-				d := net.Dialer{}
-				return d.DialContext(ctx, "udp", cfg.DNS)
-			},
+		resolver.Dial = func(ctx context.Context, network, address string) (net.Conn, error) {
+			d := net.Dialer{}
+			return d.DialContext(ctx, "udp", cfg.DNS)
 		}
 		logger.Info("using custom DNS server", "dns", cfg.DNS)
 	}
@@ -361,9 +379,10 @@ func run() error {
 
 	// Create and start proxy server
 	srv := proxy.New(proxy.Config{
-		Allowlist: al,
-		Logger:    logger,
-		Resolver:  resolver,
+		Allowlist:   al,
+		Logger:      logger,
+		Resolver:    resolver,
+		DialTimeout: dialTimeoutDuration,
 	})
 
 	// Run proxy in a goroutine so we can handle shutdown
@@ -415,6 +434,9 @@ const defaultConfigTemplate = `# ngrok-socks5-proxy configuration
 
 # Custom DNS server for resolving internal hostnames
 # dns: "10.0.0.53:53"
+
+# Timeout for connecting to targets (e.g., "15s", "500ms")
+# dial_timeout: "10s"
 
 # Log level: debug, info, warn, error
 log_level: "info"
