@@ -107,6 +107,7 @@ curl -x socks5h://1.tcp.ngrok.io:12345 http://crm.corp.local/
 | `--dns` | No | system DNS | Custom DNS server (e.g., `10.0.0.53:53`) |
 | `--allow` | Yes (≥1) | — | Hostname pattern (repeatable or comma-separated) |
 | `--log-level` | No | `info` | Log level: `debug`, `info`, `warn`, `error` |
+| `--dial-timeout` | No | `10s` | Timeout for connecting to targets (e.g., `15s`, `500ms`) |
 
 `--url` and `--listen` are mutually exclusive. CLI flags override config file values. `--allow` flags merge with config file entries.
 
@@ -120,6 +121,7 @@ name: "acme-corp-proxy"                   # optional: dashboard label
 # bindings:                              # optional: endpoint bindings
 #   - "internal"
 # dns: "10.0.0.53:53"                   # optional: custom DNS
+# dial_timeout: "10s"                   # optional: timeout for connecting to targets
 log_level: "info"
 allow:
   - "*.corp.local"

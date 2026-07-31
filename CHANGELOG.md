@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- `--dial-timeout` flag / `dial_timeout` config option to configure the
+  timeout for connecting to allowlisted targets (default `10s`, previously
+  hardcoded). Found to be worth exposing after manual testing surfaced
+  page-load delays when an allowlisted target was reachable but slow or
+  unresponsive.
+
+### Fixed
+
+- Target hostname resolution now always uses Go's pure-Go DNS resolver
+  (`PreferGo: true`) instead of the OS-native resolver. On macOS, the
+  OS-native resolver routes any `.local`-suffixed hostname (e.g. the
+  README's own example pattern `*.corp.local`) through mDNS/Bonjour,
+  adding ~5 seconds of latency per connection even when the name is
+  already present in `/etc/hosts`. Confirmed via a real Chrome
+  `--proxy-server` test. This also makes the Docker image's
+  `/etc/nsswitch.conf` workaround (added in an earlier fix) unnecessary
+  for the proxy's own resolution, though it's left in place as harmless
+  defense-in-depth.
+
 ## [0.1.1] - 2026-07-31
 
 ### Fixed
