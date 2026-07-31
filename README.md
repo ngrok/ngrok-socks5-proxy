@@ -174,12 +174,12 @@ The proxy logs every connection attempt (target, allowed/denied) for audit.
 ## Docker
 
 ```bash
-docker pull ishanjain8108/ngrok-forward-proxy
+docker pull ishanjain8108/ngrok-socks5-proxy
 ```
 
 Or build from source:
 ```bash
-docker build -t ishanjain8108/ngrok-forward-proxy .
+docker build -t ishanjain8108/ngrok-socks5-proxy .
 ```
 
 ### With built-in ngrok agent
@@ -187,7 +187,7 @@ docker build -t ishanjain8108/ngrok-forward-proxy .
 The proxy creates its own ngrok TCP endpoint — no separate agent needed.
 
 ```bash
-docker run --rm ishanjain8108/ngrok-forward-proxy \
+docker run --rm ishanjain8108/ngrok-socks5-proxy \
   --authtoken=YOUR_TOKEN \
   --url=tcp://1.tcp.ngrok.io:12345 \
   --allow="*.corp.local"
@@ -203,7 +203,7 @@ The proxy listens on a local port and a separate ngrok agent forwards traffic to
 
 **On Linux** (production):
 ```bash
-docker run --rm --network host ishanjain8108/ngrok-forward-proxy \
+docker run --rm --network host ishanjain8108/ngrok-socks5-proxy \
   --listen 0.0.0.0:9080 \
   --allow="*.corp.local"
 ```
@@ -213,7 +213,7 @@ docker run --rm --network host ishanjain8108/ngrok-forward-proxy \
 docker run --rm -p 9080:9080 \
   --add-host crm.corp.local:host-gateway \
   --add-host sso.corp.local:host-gateway \
-  ishanjain8108/ngrok-forward-proxy \
+  ishanjain8108/ngrok-socks5-proxy \
   --listen 0.0.0.0:9080 \
   --allow="*.corp.local"
 ```
