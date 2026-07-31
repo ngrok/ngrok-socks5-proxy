@@ -102,7 +102,7 @@ func (s *Server) handleConn(conn net.Conn) {
 	}
 }
 
-// dialTarget resolves and connects to the target, enforcing allowlist and blocked IP rules.
+// dialTarget resolves and connects to the target, enforcing the allowlist.
 func (s *Server) dialTarget(ctx context.Context, host, port string) (net.Conn, error) {
 	if !s.allowlist.IsAllowed(host, port) {
 		return nil, fmt.Errorf("target %s:%s not in allowlist: %w", host, port, ErrNotAllowed)
