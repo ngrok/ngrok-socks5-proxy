@@ -107,9 +107,13 @@ curl -x socks5h://1.tcp.ngrok.io:12345 http://crm.corp.local/
 | `--dns` | No | system DNS | Custom DNS server (e.g., `10.0.0.53:53`) |
 | `--allow` | Yes (≥1) | — | Hostname pattern (repeatable or comma-separated) |
 | `--log-level` | No | `info` | Log level: `debug`, `info`, `warn`, `error` |
+| `--log-format` | No | `text` | Log format: `text`, `logfmt`, `json` |
+| `--log` | No | `stderr` | Log destination: `stdout`, `stderr`, `false` (disabled), or a file path |
 | `--dial-timeout` | No | `10s` | Timeout for connecting to targets (e.g., `15s`, `500ms`) |
 
 `--url` and `--listen` are mutually exclusive. CLI flags override config file values. `--allow` flags merge with config file entries.
+
+`--log-level`/`--log-format`/`--log` are modeled directly on the equivalent `ngrok` agent config options, using the same names and values, minus the agent's colorized `term` format (not supported here, since it needs a dependency beyond Go's standard `log/slog` package).
 
 ### Config File
 
@@ -123,11 +127,15 @@ name: "acme-corp-proxy"                   # optional: dashboard label
 # dns: "10.0.0.53:53"                   # optional: custom DNS
 # dial_timeout: "10s"                   # optional: timeout for connecting to targets
 log_level: "info"
+# log_format: "text"                    # optional: text, logfmt, or json
+# log: stderr                           # optional: stdout, stderr, false, or a file path
 allow:
   - "*.corp.local"
   - "sso.partner.com"
   - "db.internal:5432"
 ```
+
+Note `log: false` above is intentionally unquoted, matching ngrok's own docs — it's still parsed as the literal string `"false"`, not a YAML boolean, so quoting it (`log: "false"`) works identically.
 
 A default config is auto-created on first run at:
 - **macOS**: `~/Library/Application Support/ngrok-socks5-proxy/config.yaml`

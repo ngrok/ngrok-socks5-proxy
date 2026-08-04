@@ -50,7 +50,11 @@ func serviceInstall(args []string) error {
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-	if _, _, err := buildConfig(f); err != nil {
+	cfg, _, err := buildConfig(f)
+	if err != nil {
+		return fmt.Errorf("validating flags: %w", err)
+	}
+	if _, err := buildLogger(cfg); err != nil {
 		return fmt.Errorf("validating flags: %w", err)
 	}
 
@@ -171,8 +175,10 @@ func (p *proxyService) Start(s service.Service) error {
 		return err
 	}
 
-	level := parseLogLevel(cfg.LogLevel)
-	p.logger = slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: level}))
+	p.logger, err = buildLogger(cfg)
+	if err != nil {
+		return err
+	}
 
 	al, err := allowlist.Parse(cfg.Allow)
 	if err != nil {

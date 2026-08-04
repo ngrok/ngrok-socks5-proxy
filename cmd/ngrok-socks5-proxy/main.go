@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
 	"os"
@@ -27,15 +28,17 @@ import (
 var version = "dev"
 
 type config struct {
-	Authtoken   string   `yaml:"authtoken"`
-	URL         string   `yaml:"url"`
-	Listen      string   `yaml:"listen"`
-	Name        string   `yaml:"name"`
-	Bindings    []string `yaml:"bindings"`
-	DNS         string   `yaml:"dns"`
-	LogLevel    string   `yaml:"log_level"`
-	Allow       []string `yaml:"allow"`
-	DialTimeout string   `yaml:"dial_timeout"`
+	Authtoken      string   `yaml:"authtoken"`
+	URL            string   `yaml:"url"`
+	Listen         string   `yaml:"listen"`
+	Name           string   `yaml:"name"`
+	Bindings       []string `yaml:"bindings"`
+	DNS            string   `yaml:"dns"`
+	LogLevel       string   `yaml:"log_level"`
+	LogFormat      string   `yaml:"log_format"`
+	LogDestination string   `yaml:"log"`
+	Allow          []string `yaml:"allow"`
+	DialTimeout    string   `yaml:"dial_timeout"`
 }
 
 // allowFlag implements flag.Value to support repeated and comma-separated --allow flags.
@@ -209,17 +212,19 @@ func openInEditor(path string) error {
 // entrypoint and `service install` (which validates the same flags up front
 // and bakes the raw argv into the installed service's arguments).
 type proxyFlags struct {
-	configFile  string
-	authtoken   string
-	url         string
-	listen      string
-	name        string
-	bindings    allowFlag
-	dns         string
-	logLevel    string
-	allow       allowFlag
-	showVersion bool
-	dialTimeout string
+	configFile     string
+	authtoken      string
+	url            string
+	listen         string
+	name           string
+	bindings       allowFlag
+	dns            string
+	logLevel       string
+	logFormat      string
+	logDestination string
+	allow          allowFlag
+	showVersion    bool
+	dialTimeout    string
 }
 
 // registerProxyFlags registers the proxy's flags against fs, so the same
@@ -236,6 +241,8 @@ func registerProxyFlags(fs *flag.FlagSet) *proxyFlags {
 	fs.Var(&f.bindings, "bindings", "endpoint bindings (e.g., internal, k8s/my-cluster)")
 	fs.StringVar(&f.dns, "dns", "", "custom DNS server (e.g., 10.0.0.53:53)")
 	fs.StringVar(&f.logLevel, "log-level", "", "log level: debug, info, warn, error")
+	fs.StringVar(&f.logFormat, "log-format", "", "log format: text, logfmt, json")
+	fs.StringVar(&f.logDestination, "log", "", "log destination: stdout, stderr, false (disabled), or a file path")
 	fs.Var(&f.allow, "allow", "hostname pattern to allow (repeatable or comma-separated)")
 	fs.StringVar(&f.dialTimeout, "dial-timeout", "", "timeout for connecting to targets (default 10s, e.g. 15s, 500ms)")
 	return f
@@ -295,6 +302,12 @@ func buildConfig(f *proxyFlags) (cfg config, dialTimeoutDuration time.Duration, 
 	}
 	if f.logLevel != "" {
 		cfg.LogLevel = f.logLevel
+	}
+	if f.logFormat != "" {
+		cfg.LogFormat = f.logFormat
+	}
+	if f.logDestination != "" {
+		cfg.LogDestination = f.logDestination
 	}
 	if f.dialTimeout != "" {
 		cfg.DialTimeout = f.dialTimeout
@@ -415,8 +428,10 @@ func run() error {
 	}
 
 	// Set up logger
-	level := parseLogLevel(cfg.LogLevel)
-	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: level}))
+	logger, err := buildLogger(cfg)
+	if err != nil {
+		return err
+	}
 
 	// Parse allowlist
 	al, err := allowlist.Parse(cfg.Allow)
@@ -500,6 +515,12 @@ const defaultConfigTemplate = `# ngrok-socks5-proxy configuration
 # Log level: debug, info, warn, error
 log_level: "info"
 
+# Log format: text, logfmt, or json
+# log_format: "text"
+
+# Log destination: stdout, stderr, false (disabled), or a file path
+# log: stderr
+
 # Hostnames the proxy is allowed to connect to (required)
 # Supports exact match and wildcard subdomains (*.domain.tld)
 allow:
@@ -535,4 +556,47 @@ func parseLogLevel(s string) slog.Level {
 	default:
 		return slog.LevelInfo
 	}
+}
+
+// logWriter resolves a log destination to an io.Writer. dest matches the
+// ngrok agent's own `log` config values: "stdout", "stderr" (default),
+// "false" (disabled), or a file path.
+func logWriter(dest string) (io.Writer, error) {
+	switch dest {
+	case "", "stderr":
+		return os.Stderr, nil
+	case "stdout":
+		return os.Stdout, nil
+	case "false":
+		return io.Discard, nil
+	default:
+		f, err := os.OpenFile(dest, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+		if err != nil {
+			return nil, fmt.Errorf("opening log file %q: %w", dest, err)
+		}
+		return f, nil
+	}
+}
+
+// buildLogger constructs the logger from cfg's log level, format, and
+// destination settings.
+func buildLogger(cfg config) (*slog.Logger, error) {
+	w, err := logWriter(cfg.LogDestination)
+	if err != nil {
+		return nil, err
+	}
+
+	opts := &slog.HandlerOptions{Level: parseLogLevel(cfg.LogLevel)}
+
+	var h slog.Handler
+	switch strings.ToLower(cfg.LogFormat) {
+	case "", "text", "logfmt":
+		h = slog.NewTextHandler(w, opts)
+	case "json":
+		h = slog.NewJSONHandler(w, opts)
+	default:
+		return nil, fmt.Errorf("invalid log-format %q: must be one of text, logfmt, json", cfg.LogFormat)
+	}
+
+	return slog.New(h), nil
 }

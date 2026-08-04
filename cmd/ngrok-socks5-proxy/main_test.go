@@ -1,9 +1,13 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
+	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -144,5 +148,155 @@ func TestBuildConfig_ListenFlagOverridesConfigFileURL(t *testing.T) {
 	}
 	if cfg.URL != "" {
 		t.Errorf("URL = %q, want empty (cleared by --listen override)", cfg.URL)
+	}
+}
+
+// buildLoggerForTest mirrors buildLogger's logic but returns a close func
+// so file-destination tests can release the handle before t.TempDir()'s
+// cleanup runs — on Windows, an open file blocks deletion (unlike Unix,
+// where an unlinked-while-open file is fine), so buildLogger (which opens
+// the file internally via logWriter but only returns a *slog.Logger, with
+// no way to reach the handle back) can't be used directly in these tests.
+func buildLoggerForTest(t *testing.T, cfg config) (*slog.Logger, func()) {
+	t.Helper()
+
+	w, err := logWriter(cfg.LogDestination)
+	if err != nil {
+		t.Fatalf("logWriter: unexpected error: %v", err)
+	}
+
+	opts := &slog.HandlerOptions{Level: parseLogLevel(cfg.LogLevel)}
+	var h slog.Handler
+	switch strings.ToLower(cfg.LogFormat) {
+	case "", "text", "logfmt":
+		h = slog.NewTextHandler(w, opts)
+	case "json":
+		h = slog.NewJSONHandler(w, opts)
+	default:
+		t.Fatalf("unsupported log-format in test: %q", cfg.LogFormat)
+	}
+
+	closeFn := func() {
+		if closer, ok := w.(io.Closer); ok {
+			closer.Close()
+		}
+	}
+	return slog.New(h), closeFn
+}
+
+func TestLogWriter_DefaultAndStderr(t *testing.T) {
+	for _, dest := range []string{"", "stderr"} {
+		w, err := logWriter(dest)
+		if err != nil {
+			t.Fatalf("logWriter(%q): unexpected error: %v", dest, err)
+		}
+		if w != os.Stderr {
+			t.Errorf("logWriter(%q) = %v, want os.Stderr", dest, w)
+		}
+	}
+}
+
+func TestLogWriter_Stdout(t *testing.T) {
+	w, err := logWriter("stdout")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if w != os.Stdout {
+		t.Errorf("logWriter(\"stdout\") = %v, want os.Stdout", w)
+	}
+}
+
+func TestLogWriter_FalseDiscards(t *testing.T) {
+	w, err := logWriter("false")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if w != io.Discard {
+		t.Errorf("logWriter(\"false\") = %v, want io.Discard", w)
+	}
+}
+
+func TestLogWriter_FilePath(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "proxy.log")
+
+	w, err := logWriter(path)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if _, err := w.Write([]byte("hello\n")); err != nil {
+		t.Fatalf("writing through returned writer: %v", err)
+	}
+	if closer, ok := w.(io.Closer); ok {
+		closer.Close()
+	}
+
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("reading back log file: %v", err)
+	}
+	if string(got) != "hello\n" {
+		t.Errorf("file contents = %q, want %q", got, "hello\n")
+	}
+}
+
+func TestLogWriter_MissingParentDirErrors(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "nosuchdir", "proxy.log")
+
+	if _, err := logWriter(path); err == nil {
+		t.Fatal("expected error for missing parent directory, got nil")
+	}
+}
+
+func TestBuildLogger_InvalidFormatRejected(t *testing.T) {
+	cfg := config{LogFormat: "xml", LogDestination: "stderr"}
+
+	if _, err := buildLogger(cfg); err == nil {
+		t.Fatal("expected error for invalid log-format, got nil")
+	}
+}
+
+func TestBuildLogger_JSONFormatWritesValidJSON(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "proxy.log")
+	cfg := config{LogFormat: "json", LogDestination: path, LogLevel: "info"}
+
+	logger, closeLog := buildLoggerForTest(t, cfg)
+	logger.Info("test message", "key", "val")
+	closeLog()
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("reading back log file: %v", err)
+	}
+
+	var record map[string]any
+	if err := json.Unmarshal(data, &record); err != nil {
+		t.Fatalf("log line is not valid JSON: %v\ncontent: %s", err, data)
+	}
+	if record["msg"] != "test message" {
+		t.Errorf("msg = %v, want %q", record["msg"], "test message")
+	}
+	if record["key"] != "val" {
+		t.Errorf("key = %v, want %q", record["key"], "val")
+	}
+}
+
+func TestBuildLogger_TextFormatIsLogfmtStyle(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "proxy.log")
+	cfg := config{LogDestination: path, LogLevel: "info"} // LogFormat left unset -> default
+
+	logger, closeLog := buildLoggerForTest(t, cfg)
+	logger.Info("test message", "key", "val")
+	closeLog()
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("reading back log file: %v", err)
+	}
+
+	if strings.HasPrefix(string(data), "{") {
+		t.Errorf("default format looks like JSON, want logfmt-style: %s", data)
+	}
+	if !strings.Contains(string(data), `msg="test message"`) {
+		t.Errorf("expected logfmt-style msg=\"test message\" in output, got: %s", data)
 	}
 }
