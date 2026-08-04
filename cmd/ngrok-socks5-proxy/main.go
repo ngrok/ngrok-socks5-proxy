@@ -15,6 +15,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/kardianos/service"
 	"golang.ngrok.com/ngrok/v2"
 	"gopkg.in/yaml.v3"
 
@@ -70,7 +71,23 @@ func main() {
 				os.Exit(1)
 			}
 			return
+		case "service":
+			if err := handleServiceCmd(os.Args[2:]); err != nil {
+				fmt.Fprintf(os.Stderr, "error: %v\n", err)
+				os.Exit(1)
+			}
+			return
 		}
+	}
+
+	if !service.Interactive() {
+		// Launched by the OS service manager (systemd/launchd/Windows SCM)
+		// rather than a terminal. Route through the service.Interface so
+		// Windows's control-callback protocol is satisfied; systemd/launchd
+		// just fork/exec and stop via SIGTERM, which proxyService.Stop
+		// handles the same way run() already does.
+		runAsService()
+		return
 	}
 
 	if err := run(); err != nil {
@@ -188,99 +205,108 @@ func openInEditor(path string) error {
 	return cmd.Run()
 }
 
-func run() error {
-	var (
-		configFile  string
-		authtoken   string
-		urlFlag     string
-		listen      string
-		name        string
-		bindings    allowFlag
-		dns         string
-		logLevel    string
-		allows      allowFlag
-		showVer     bool
-		dialTimeout string
-	)
+// proxyFlags holds the values of every flag shared between the normal `run()`
+// entrypoint and `service install` (which validates the same flags up front
+// and bakes the raw argv into the installed service's arguments).
+type proxyFlags struct {
+	configFile  string
+	authtoken   string
+	url         string
+	listen      string
+	name        string
+	bindings    allowFlag
+	dns         string
+	logLevel    string
+	allow       allowFlag
+	showVersion bool
+	dialTimeout string
+}
 
-	flag.BoolVar(&showVer, "version", false, "print version and exit")
-	flag.StringVar(&configFile, "config", "", "path to YAML config file")
-	flag.StringVar(&authtoken, "authtoken", "", "ngrok authtoken (or set NGROK_AUTHTOKEN)")
-	flag.StringVar(&urlFlag, "url", "", "endpoint URL (e.g., tcp://1.tcp.ngrok.io:12345 or tcp://my-proxy.internal:8080)")
-	flag.StringVar(&listen, "listen", "", "local address to listen on without ngrok (e.g., localhost:8080)")
-	flag.StringVar(&name, "name", "", "label for the endpoint in the ngrok dashboard")
-	flag.Var(&bindings, "bindings", "endpoint bindings (e.g., internal, k8s/my-cluster)")
-	flag.StringVar(&dns, "dns", "", "custom DNS server (e.g., 10.0.0.53:53)")
-	flag.StringVar(&logLevel, "log-level", "", "log level: debug, info, warn, error")
-	flag.Var(&allows, "allow", "hostname pattern to allow (repeatable or comma-separated)")
-	flag.StringVar(&dialTimeout, "dial-timeout", "", "timeout for connecting to targets (default 10s, e.g. 15s, 500ms)")
-	flag.Parse()
+// registerProxyFlags registers the proxy's flags against fs, so the same
+// definitions can be reused by both flag.CommandLine (run()) and a scratch
+// FlagSet (service install).
+func registerProxyFlags(fs *flag.FlagSet) *proxyFlags {
+	f := &proxyFlags{}
+	fs.BoolVar(&f.showVersion, "version", false, "print version and exit")
+	fs.StringVar(&f.configFile, "config", "", "path to YAML config file")
+	fs.StringVar(&f.authtoken, "authtoken", "", "ngrok authtoken (or set NGROK_AUTHTOKEN)")
+	fs.StringVar(&f.url, "url", "", "endpoint URL (e.g., tcp://1.tcp.ngrok.io:12345 or tcp://my-proxy.internal:8080)")
+	fs.StringVar(&f.listen, "listen", "", "local address to listen on without ngrok (e.g., localhost:8080)")
+	fs.StringVar(&f.name, "name", "", "label for the endpoint in the ngrok dashboard")
+	fs.Var(&f.bindings, "bindings", "endpoint bindings (e.g., internal, k8s/my-cluster)")
+	fs.StringVar(&f.dns, "dns", "", "custom DNS server (e.g., 10.0.0.53:53)")
+	fs.StringVar(&f.logLevel, "log-level", "", "log level: debug, info, warn, error")
+	fs.Var(&f.allow, "allow", "hostname pattern to allow (repeatable or comma-separated)")
+	fs.StringVar(&f.dialTimeout, "dial-timeout", "", "timeout for connecting to targets (default 10s, e.g. 15s, 500ms)")
+	return f
+}
 
-	if showVer {
-		fmt.Println(version)
-		return nil
-	}
-
-	// Resolve config file path
+// buildConfig merges CLI flags over the config file and validates the
+// result, mirroring exactly what `run()` did inline before this was
+// extracted so it could also be used by `service install` (to validate
+// up front) and proxyService.Start (to build the config when launched by
+// the OS service manager).
+func buildConfig(f *proxyFlags) (cfg config, dialTimeoutDuration time.Duration, err error) {
+	configFile := f.configFile
 	if configFile == "" {
 		configFile = defaultConfigPath()
 	}
 
 	// Load config file, or create default if it doesn't exist
-	cfg := config{LogLevel: "info"}
-	if data, err := os.ReadFile(configFile); err == nil {
-		if err := yaml.Unmarshal(data, &cfg); err != nil {
-			return fmt.Errorf("parsing config file %s: %w", configFile, err)
+	cfg = config{LogLevel: "info"}
+	if data, readErr := os.ReadFile(configFile); readErr == nil {
+		if unmarshalErr := yaml.Unmarshal(data, &cfg); unmarshalErr != nil {
+			return config{}, 0, fmt.Errorf("parsing config file %s: %w", configFile, unmarshalErr)
 		}
-	} else if os.IsNotExist(err) && configFile == defaultConfigPath() {
+	} else if os.IsNotExist(readErr) && configFile == defaultConfigPath() {
 		// Auto-create default config on first run
-		if err := createDefaultConfig(configFile); err != nil {
-			fmt.Fprintf(os.Stderr, "warning: could not create default config: %v\n", err)
+		if createErr := createDefaultConfig(configFile); createErr != nil {
+			fmt.Fprintf(os.Stderr, "warning: could not create default config: %v\n", createErr)
 		} else {
 			fmt.Fprintf(os.Stderr, "Created default config at: %s\n", configFile)
 		}
-	} else if !os.IsNotExist(err) {
-		return fmt.Errorf("reading config file %s: %w", configFile, err)
+	} else if !os.IsNotExist(readErr) {
+		return config{}, 0, fmt.Errorf("reading config file %s: %w", configFile, readErr)
 	}
 
 	// CLI flags override config file values
-	if urlFlag != "" && listen != "" {
-		return fmt.Errorf("--listen and --url are mutually exclusive")
+	if f.url != "" && f.listen != "" {
+		return config{}, 0, fmt.Errorf("--listen and --url are mutually exclusive")
 	}
-	if authtoken != "" {
-		cfg.Authtoken = authtoken
+	if f.authtoken != "" {
+		cfg.Authtoken = f.authtoken
 	}
-	if urlFlag != "" {
-		cfg.URL = urlFlag
+	if f.url != "" {
+		cfg.URL = f.url
 		cfg.Listen = "" // --url and --listen are mutually exclusive
 	}
-	if listen != "" {
-		cfg.Listen = listen
+	if f.listen != "" {
+		cfg.Listen = f.listen
 		cfg.URL = "" // --listen and --url are mutually exclusive
 	}
-	if name != "" {
-		cfg.Name = name
+	if f.name != "" {
+		cfg.Name = f.name
 	}
-	if len(bindings) > 0 {
-		cfg.Bindings = bindings
+	if len(f.bindings) > 0 {
+		cfg.Bindings = f.bindings
 	}
-	if dns != "" {
-		cfg.DNS = dns
+	if f.dns != "" {
+		cfg.DNS = f.dns
 	}
-	if logLevel != "" {
-		cfg.LogLevel = logLevel
+	if f.logLevel != "" {
+		cfg.LogLevel = f.logLevel
 	}
-	if dialTimeout != "" {
-		cfg.DialTimeout = dialTimeout
+	if f.dialTimeout != "" {
+		cfg.DialTimeout = f.dialTimeout
 	}
 	// Merge allow flags with config file allows
-	cfg.Allow = append(cfg.Allow, allows...)
+	cfg.Allow = append(cfg.Allow, f.allow...)
 
-	dialTimeoutDuration := time.Duration(0) // 0 means "use proxy's default"
+	dialTimeoutDuration = 0 // 0 means "use proxy's default"
 	if cfg.DialTimeout != "" {
-		d, err := time.ParseDuration(cfg.DialTimeout)
-		if err != nil {
-			return fmt.Errorf("invalid dial-timeout %q: %w", cfg.DialTimeout, err)
+		d, parseErr := time.ParseDuration(cfg.DialTimeout)
+		if parseErr != nil {
+			return config{}, 0, fmt.Errorf("invalid dial-timeout %q: %w", cfg.DialTimeout, parseErr)
 		}
 		dialTimeoutDuration = d
 	}
@@ -291,29 +317,25 @@ func run() error {
 			cfg.Authtoken = os.Getenv("NGROK_AUTHTOKEN")
 		}
 		if cfg.Authtoken == "" {
-			return fmt.Errorf("authtoken is required (use --authtoken, config file, or NGROK_AUTHTOKEN env var)")
+			return config{}, 0, fmt.Errorf("authtoken is required (use --authtoken, config file, or NGROK_AUTHTOKEN env var)")
 		}
 	}
 
 	if cfg.Listen != "" && cfg.URL != "" {
-		return fmt.Errorf("--listen and --url are mutually exclusive")
+		return config{}, 0, fmt.Errorf("--listen and --url are mutually exclusive")
 	}
 
 	if len(cfg.Allow) == 0 {
-		return fmt.Errorf("at least one --allow pattern is required")
+		return config{}, 0, fmt.Errorf("at least one --allow pattern is required")
 	}
 
-	// Set up logger
-	level := parseLogLevel(cfg.LogLevel)
-	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: level}))
+	return cfg, dialTimeoutDuration, nil
+}
 
-	// Parse allowlist
-	al, err := allowlist.Parse(cfg.Allow)
-	if err != nil {
-		return fmt.Errorf("invalid allowlist: %w", err)
-	}
-	logger.Info("allowlist configured", "patterns", cfg.Allow)
-
+// buildResolver constructs the DNS resolver used to reach allowlisted
+// targets. See the PreferGo comment below for why this isn't just
+// net.DefaultResolver.
+func buildResolver(cfg config, logger *slog.Logger) *net.Resolver {
 	// Use Go's pure-Go DNS resolver rather than the OS-native resolver. On
 	// Darwin in particular, the OS-native resolver routes ".local"-suffixed
 	// hostnames (a common internal-domain convention, e.g. "*.corp.local")
@@ -328,53 +350,90 @@ func run() error {
 		}
 		logger.Info("using custom DNS server", "dns", cfg.DNS)
 	}
+	return resolver
+}
+
+// createListener creates the proxy's listener, either a local TCP listener
+// (--listen) or an ngrok-managed TCP endpoint.
+func createListener(ctx context.Context, cfg config, logger *slog.Logger) (net.Listener, error) {
+	if cfg.Listen != "" {
+		// Local mode: listen directly on a local address
+		listener, err := net.Listen("tcp", cfg.Listen)
+		if err != nil {
+			return nil, fmt.Errorf("listening on %s: %w", cfg.Listen, err)
+		}
+		logger.Info("proxy listening locally", "addr", cfg.Listen)
+		fmt.Fprintf(os.Stderr, "\n  Forward proxy available at: %s\n\n", cfg.Listen)
+		return listener, nil
+	}
+
+	// ngrok mode: create a TCP endpoint via the ngrok SDK
+	agent, err := ngrok.NewAgent(ngrok.WithAuthtoken(cfg.Authtoken))
+	if err != nil {
+		return nil, fmt.Errorf("creating ngrok agent: %w", err)
+	}
+
+	logger.Info("connecting to ngrok...")
+	if err := agent.Connect(ctx); err != nil {
+		return nil, fmt.Errorf("connecting to ngrok: %w", err)
+	}
+
+	endpointOpts := []ngrok.EndpointOption{}
+	if cfg.URL != "" {
+		endpointOpts = append(endpointOpts, ngrok.WithURL(cfg.URL))
+	} else {
+		endpointOpts = append(endpointOpts, ngrok.WithURL("tcp://"))
+	}
+	if cfg.Name != "" {
+		endpointOpts = append(endpointOpts, ngrok.WithName(cfg.Name))
+	}
+	if len(cfg.Bindings) > 0 {
+		endpointOpts = append(endpointOpts, ngrok.WithBindings(cfg.Bindings...))
+	}
+
+	ln, err := agent.Listen(ctx, endpointOpts...)
+	if err != nil {
+		return nil, fmt.Errorf("creating TCP endpoint: %w", err)
+	}
+	logger.Info("proxy endpoint online", "url", ln.URL(), "name", cfg.Name)
+	fmt.Fprintf(os.Stderr, "\n  Forward proxy available at: %s\n\n", ln.URL())
+	return ln, nil
+}
+
+func run() error {
+	f := registerProxyFlags(flag.CommandLine)
+	flag.Parse()
+
+	if f.showVersion {
+		fmt.Println(version)
+		return nil
+	}
+
+	cfg, dialTimeoutDuration, err := buildConfig(f)
+	if err != nil {
+		return err
+	}
+
+	// Set up logger
+	level := parseLogLevel(cfg.LogLevel)
+	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: level}))
+
+	// Parse allowlist
+	al, err := allowlist.Parse(cfg.Allow)
+	if err != nil {
+		return fmt.Errorf("invalid allowlist: %w", err)
+	}
+	logger.Info("allowlist configured", "patterns", cfg.Allow)
+
+	resolver := buildResolver(cfg, logger)
 
 	// Set up context with signal handling for graceful shutdown
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	// Create listener — either local or via ngrok
-	var listener net.Listener
-	if cfg.Listen != "" {
-		// Local mode: listen directly on a local address
-		listener, err = net.Listen("tcp", cfg.Listen)
-		if err != nil {
-			return fmt.Errorf("listening on %s: %w", cfg.Listen, err)
-		}
-		logger.Info("proxy listening locally", "addr", cfg.Listen)
-		fmt.Fprintf(os.Stderr, "\n  Forward proxy available at: %s\n\n", cfg.Listen)
-	} else {
-		// ngrok mode: create a TCP endpoint via the ngrok SDK
-		agent, err := ngrok.NewAgent(ngrok.WithAuthtoken(cfg.Authtoken))
-		if err != nil {
-			return fmt.Errorf("creating ngrok agent: %w", err)
-		}
-
-		logger.Info("connecting to ngrok...")
-		if err := agent.Connect(ctx); err != nil {
-			return fmt.Errorf("connecting to ngrok: %w", err)
-		}
-
-		endpointOpts := []ngrok.EndpointOption{}
-		if cfg.URL != "" {
-			endpointOpts = append(endpointOpts, ngrok.WithURL(cfg.URL))
-		} else {
-			endpointOpts = append(endpointOpts, ngrok.WithURL("tcp://"))
-		}
-		if cfg.Name != "" {
-			endpointOpts = append(endpointOpts, ngrok.WithName(cfg.Name))
-		}
-		if len(cfg.Bindings) > 0 {
-			endpointOpts = append(endpointOpts, ngrok.WithBindings(cfg.Bindings...))
-		}
-
-		ln, err := agent.Listen(ctx, endpointOpts...)
-		if err != nil {
-			return fmt.Errorf("creating TCP endpoint: %w", err)
-		}
-		listener = ln
-		logger.Info("proxy endpoint online", "url", ln.URL(), "name", cfg.Name)
-		fmt.Fprintf(os.Stderr, "\n  Forward proxy available at: %s\n\n", ln.URL())
+	listener, err := createListener(ctx, cfg, logger)
+	if err != nil {
+		return err
 	}
 
 	// Create and start proxy server
