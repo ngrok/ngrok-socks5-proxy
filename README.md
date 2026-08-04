@@ -142,6 +142,26 @@ ngrok-socks5-proxy config path    # Print config file path
 ngrok-socks5-proxy pac --proxy HOST:PORT  # Generate PAC file
 ```
 
+## Running as a Background Service
+
+`ngrok-socks5-proxy` can install itself as a native background service —
+a systemd service on Linux, a launchd daemon on macOS, or a Windows Service
+on Windows — rather than running in the foreground. This applies to the
+raw binary only; Docker deployments should keep using
+`docker run -d --restart=unless-stopped` instead (see [Docker](#docker)).
+
+```bash
+sudo ngrok-socks5-proxy service install --listen=0.0.0.0:9080 --allow="*.corp.local"
+sudo ngrok-socks5-proxy service start
+ngrok-socks5-proxy service status
+sudo ngrok-socks5-proxy service stop
+sudo ngrok-socks5-proxy service uninstall
+```
+
+- `service install` takes the same flags as running the proxy directly — whatever you pass is what the service runs with on every subsequent start.
+- `install`/`uninstall`/`start`/`stop`/`restart` require root (Linux/macOS) or Administrator (Windows), since they register/control the OS service manager. `status` doesn't.
+- If `--authtoken` isn't passed but `NGROK_AUTHTOKEN` is set in your shell when you run `service install`, it's carried over into the installed service's environment automatically — it won't otherwise be inherited from your shell once the OS is the one starting the process.
+
 ## Allowlist Patterns
 
 | Pattern | Matches |
