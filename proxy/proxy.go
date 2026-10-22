@@ -82,13 +82,13 @@ func (s *Server) Drain() {
 
 // handleConn detects the protocol and dispatches to the appropriate handler.
 func (s *Server) handleConn(conn net.Conn) {
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	// Read the first byte to detect protocol
 	buf := make([]byte, 1)
-	conn.SetReadDeadline(time.Now().Add(10 * time.Second))
+	_ = conn.SetReadDeadline(time.Now().Add(10 * time.Second))
 	n, err := conn.Read(buf)
-	conn.SetReadDeadline(time.Time{}) // clear deadline
+	_ = conn.SetReadDeadline(time.Time{}) // clear deadline
 	if err != nil || n == 0 {
 		s.log.Debug("failed to read first byte", "remote", conn.RemoteAddr(), "error", err)
 		return
@@ -143,18 +143,18 @@ func bridge(left, right net.Conn) {
 
 	go func() {
 		defer wg.Done()
-		io.Copy(right, left)
+		_, _ = io.Copy(right, left)
 		// Signal to right that we're done writing
 		if cw, ok := right.(closeWriter); ok {
-			cw.CloseWrite()
+			_ = cw.CloseWrite()
 		}
 	}()
 
 	go func() {
 		defer wg.Done()
-		io.Copy(left, right)
+		_, _ = io.Copy(left, right)
 		if cw, ok := left.(closeWriter); ok {
-			cw.CloseWrite()
+			_ = cw.CloseWrite()
 		}
 	}()
 

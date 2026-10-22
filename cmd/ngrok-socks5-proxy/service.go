@@ -208,7 +208,7 @@ func (p *proxyService) Start(s service.Service) error {
 	p.done = make(chan struct{})
 	go func() {
 		defer close(p.done)
-		if err := p.srv.Serve(p.listener); err != nil && ctx.Err() == nil {
+		if err := p.srv.Serve(p.listener); ctx.Err() == nil {
 			p.logger.Error("proxy server error", "error", err)
 		}
 	}()
@@ -226,7 +226,7 @@ func (p *proxyService) Stop(s service.Service) error {
 		p.cancel()
 	}
 	if p.listener != nil {
-		p.listener.Close()
+		_ = p.listener.Close()
 	}
 	if p.srv != nil {
 		p.srv.Drain()
