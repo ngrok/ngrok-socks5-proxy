@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.4] - 2026-10-22
+
+### Security
+
+- Release binaries are now built with Go 1.27.3 (previously 1.26.3),
+  picking up the Go standard library security fixes released since.
+  Exposure in earlier releases was low: the proxy's only TLS connection
+  is to the ngrok edge, verified against ngrok's pinned CA.
+- Upgraded `golang.ngrok.com/ngrok/v2` from v2.1.4 to v2.3.0.
+- Upgraded indirect dependency `golang.org/x/net` from v0.50.0 to
+  v0.61.0 and `golang.org/x/sys` from v0.41.0 to v0.49.0. `govulncheck`
+  now reports no known vulnerabilities in any required module. None of
+  the earlier `x/net` findings were reachable from this code.
+
+## [0.1.3] - 2026-08-04
+
+### Added
+
+- `service install|uninstall|start|stop|restart|status` subcommand to run
+  the proxy as a native background service (systemd on Linux, launchd on
+  macOS, Windows Service on Windows).
+- `--log-format` (`text`/`logfmt`/`json`) and `--log`
+  (`stdout`/`stderr`/`false`/file path) flags and config options,
+  matching the ngrok agent's `log_format`/`log` options.
+
+## [0.1.2] - 2026-07-31
+
 ### Added
 
 - `--dial-timeout` flag / `dial_timeout` config option to configure the
@@ -55,5 +82,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Prebuilt cross-platform binaries (Linux, macOS, Windows; amd64/arm64) via
   GitHub Releases.
 
+[Unreleased]: https://github.com/ngrok/ngrok-socks5-proxy/compare/v0.1.4...HEAD
+[0.1.4]: https://github.com/ngrok/ngrok-socks5-proxy/releases/tag/v0.1.4
+[0.1.3]: https://github.com/ngrok/ngrok-socks5-proxy/releases/tag/v0.1.3
+[0.1.2]: https://github.com/ngrok/ngrok-socks5-proxy/releases/tag/v0.1.2
 [0.1.1]: https://github.com/ngrok/ngrok-socks5-proxy/releases/tag/v0.1.1
 [0.1.0]: https://github.com/ngrok/ngrok-socks5-proxy/releases/tag/v0.1.0
