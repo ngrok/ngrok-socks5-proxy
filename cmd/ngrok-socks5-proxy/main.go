@@ -130,7 +130,9 @@ func handlePacCmd(args []string) error {
 	fs := flag.NewFlagSet("pac", flag.ExitOnError)
 	configFile := fs.String("config", "", "path to YAML config file")
 	proxyAddr := fs.String("proxy", "", "proxy address for the PAC file (e.g., proxy.ishan.test:443)")
-	_ = fs.Parse(args) // ExitOnError: exits on failure
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
 
 	// Load config to get allow patterns
 	cfgPath := *configFile
