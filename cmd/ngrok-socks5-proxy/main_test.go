@@ -178,7 +178,7 @@ func buildLoggerForTest(t *testing.T, cfg config) (*slog.Logger, func()) {
 
 	closeFn := func() {
 		if closer, ok := w.(io.Closer); ok {
-			closer.Close()
+			_ = closer.Close()
 		}
 	}
 	return slog.New(h), closeFn
@@ -227,7 +227,7 @@ func TestLogWriter_FilePath(t *testing.T) {
 		t.Fatalf("writing through returned writer: %v", err)
 	}
 	if closer, ok := w.(io.Closer); ok {
-		closer.Close()
+		_ = closer.Close()
 	}
 
 	got, err := os.ReadFile(path)

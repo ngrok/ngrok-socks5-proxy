@@ -17,9 +17,9 @@ func (s *Server) handleHTTP(conn net.Conn) {
 
 	for {
 		// Set a read deadline for the next request
-		conn.SetReadDeadline(time.Now().Add(60 * time.Second))
+		_ = conn.SetReadDeadline(time.Now().Add(60 * time.Second))
 		req, err := http.ReadRequest(br)
-		conn.SetReadDeadline(time.Time{})
+		_ = conn.SetReadDeadline(time.Time{})
 		if err != nil {
 			if err != io.EOF {
 				s.log.Debug("error reading HTTP request", "remote", conn.RemoteAddr(), "error", err)
@@ -60,7 +60,7 @@ func (s *Server) handleHTTPConnect(conn net.Conn, req *http.Request) {
 		writeHTTPError(conn, http.StatusForbidden, err.Error())
 		return
 	}
-	defer target.Close()
+	defer func() { _ = target.Close() }()
 
 	// Send 200 Connection Established
 	_, err = fmt.Fprintf(conn, "HTTP/1.1 200 Connection Established\r\n\r\n")
@@ -105,7 +105,7 @@ func (s *Server) handleHTTPPlain(conn net.Conn, req *http.Request) {
 		writeHTTPError(conn, http.StatusForbidden, err.Error())
 		return
 	}
-	defer target.Close()
+	defer func() { _ = target.Close() }()
 
 	// Remove proxy-specific headers
 	req.Header.Del("Proxy-Connection")
@@ -126,7 +126,7 @@ func (s *Server) handleHTTPPlain(conn net.Conn, req *http.Request) {
 		s.log.Warn("failed to read upstream response", "error", err)
 		return
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if err := resp.Write(conn); err != nil {
 		s.log.Debug("failed to write response to client", "error", err)
@@ -154,5 +154,5 @@ func parseHostPort(addr, defaultPort string) (string, string, error) {
 func writeHTTPError(conn net.Conn, status int, msg string) {
 	resp := fmt.Sprintf("HTTP/1.1 %d %s\r\nContent-Type: text/plain\r\nConnection: close\r\n\r\n%s\n",
 		status, http.StatusText(status), msg)
-	conn.Write([]byte(resp))
+	_, _ = conn.Write([]byte(resp))
 }

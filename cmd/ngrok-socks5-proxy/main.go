@@ -130,7 +130,7 @@ func handlePacCmd(args []string) error {
 	fs := flag.NewFlagSet("pac", flag.ExitOnError)
 	configFile := fs.String("config", "", "path to YAML config file")
 	proxyAddr := fs.String("proxy", "", "proxy address for the PAC file (e.g., proxy.ishan.test:443)")
-	fs.Parse(args)
+	_ = fs.Parse(args) // ExitOnError: exits on failure
 
 	// Load config to get allow patterns
 	cfgPath := *configFile
@@ -469,7 +469,7 @@ func run() error {
 	select {
 	case <-ctx.Done():
 		logger.Info("shutting down...")
-		listener.Close()
+		_ = listener.Close()
 		srv.Drain()
 		logger.Info("shutdown complete")
 		return nil

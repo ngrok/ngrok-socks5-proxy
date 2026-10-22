@@ -27,10 +27,10 @@ func setupTestProxy(t *testing.T, patterns []string) (proxyAddr string, cleanup 
 		t.Fatal(err)
 	}
 
-	go srv.Serve(ln)
+	go func() { _ = srv.Serve(ln) }()
 
 	return ln.Addr().String(), func() {
-		ln.Close()
+		_ = ln.Close()
 		srv.Drain()
 	}
 }
@@ -38,7 +38,7 @@ func setupTestProxy(t *testing.T, patterns []string) (proxyAddr string, cleanup 
 func TestHTTPConnect_Allowed(t *testing.T) {
 	// Start a target HTTP server
 	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprint(w, "hello from target")
+		_, _ = fmt.Fprint(w, "hello from target")
 	}))
 	defer target.Close()
 
@@ -54,9 +54,11 @@ func TestHTTPConnect_Allowed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
-	fmt.Fprintf(conn, "CONNECT %s:%s HTTP/1.1\r\nHost: %s:%s\r\n\r\n", targetHost, targetPort, targetHost, targetPort)
+	if _, err := fmt.Fprintf(conn, "CONNECT %s:%s HTTP/1.1\r\nHost: %s:%s\r\n\r\n", targetHost, targetPort, targetHost, targetPort); err != nil {
+		t.Fatal(err)
+	}
 
 	// Read response
 	br := bufio.NewReader(conn)
@@ -69,13 +71,15 @@ func TestHTTPConnect_Allowed(t *testing.T) {
 	}
 
 	// Now send an HTTP request through the tunnel
-	fmt.Fprintf(conn, "GET / HTTP/1.1\r\nHost: %s:%s\r\nConnection: close\r\n\r\n", targetHost, targetPort)
+	if _, err := fmt.Fprintf(conn, "GET / HTTP/1.1\r\nHost: %s:%s\r\nConnection: close\r\n\r\n", targetHost, targetPort); err != nil {
+		t.Fatal(err)
+	}
 	resp, err = http.ReadResponse(br, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	body, _ := io.ReadAll(resp.Body)
-	resp.Body.Close()
+	_ = resp.Body.Close()
 
 	if string(body) != "hello from target" {
 		t.Fatalf("unexpected body: %q", body)
@@ -90,9 +94,11 @@ func TestHTTPConnect_Denied(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
-	fmt.Fprintf(conn, "CONNECT denied.example.com:443 HTTP/1.1\r\nHost: denied.example.com:443\r\n\r\n")
+	if _, err := fmt.Fprintf(conn, "CONNECT denied.example.com:443 HTTP/1.1\r\nHost: denied.example.com:443\r\n\r\n"); err != nil {
+		t.Fatal(err)
+	}
 
 	br := bufio.NewReader(conn)
 	resp, err := http.ReadResponse(br, nil)
@@ -106,7 +112,7 @@ func TestHTTPConnect_Denied(t *testing.T) {
 
 func TestHTTPPlainProxy_Allowed(t *testing.T) {
 	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprint(w, "plain proxy works")
+		_, _ = fmt.Fprint(w, "plain proxy works")
 	}))
 	defer target.Close()
 
@@ -119,10 +125,14 @@ func TestHTTPPlainProxy_Allowed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
-	fmt.Fprintf(conn, "GET %s/ HTTP/1.1\r\nHost: %s\r\nConnection: close\r\n\r\n",
-		target.URL, target.Listener.Addr().String())
+	if _, err := fmt.Fprintf(conn, "GET %s/ HTTP/1.1\r\nHost: %s\r\nConnection: close\r\n\r\n",
+		target.URL, target.Listener.Addr().String()); err != nil {
+
+		t.Fatal(err)
+
+	}
 
 	br := bufio.NewReader(conn)
 	resp, err := http.ReadResponse(br, nil)
@@ -130,7 +140,7 @@ func TestHTTPPlainProxy_Allowed(t *testing.T) {
 		t.Fatal(err)
 	}
 	body, _ := io.ReadAll(resp.Body)
-	resp.Body.Close()
+	_ = resp.Body.Close()
 
 	if resp.StatusCode != 200 {
 		t.Fatalf("expected 200, got %d", resp.StatusCode)
@@ -142,7 +152,7 @@ func TestHTTPPlainProxy_Allowed(t *testing.T) {
 
 func TestSOCKS5_Allowed(t *testing.T) {
 	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprint(w, "socks5 works")
+		_, _ = fmt.Fprint(w, "socks5 works")
 	}))
 	defer target.Close()
 
@@ -155,10 +165,12 @@ func TestSOCKS5_Allowed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	// SOCKS5 handshake: version, 1 method, no-auth
-	conn.Write([]byte{0x05, 0x01, 0x00})
+	if _, err := conn.Write([]byte{0x05, 0x01, 0x00}); err != nil {
+		t.Fatal(err)
+	}
 
 	// Read method selection response
 	methodResp := make([]byte, 2)
@@ -172,14 +184,18 @@ func TestSOCKS5_Allowed(t *testing.T) {
 	// Send CONNECT request with IPv4 address
 	targetIP := net.ParseIP(targetHost).To4()
 	var targetPort uint16
-	fmt.Sscanf(targetPortStr, "%d", &targetPort)
+	if _, err := fmt.Sscanf(targetPortStr, "%d", &targetPort); err != nil {
+		t.Fatal(err)
+	}
 
 	req := []byte{0x05, 0x01, 0x00, 0x01} // VER, CMD=CONNECT, RSV, ATYP=IPv4
 	req = append(req, targetIP...)
 	portBuf := make([]byte, 2)
 	binary.BigEndian.PutUint16(portBuf, targetPort)
 	req = append(req, portBuf...)
-	conn.Write(req)
+	if _, err := conn.Write(req); err != nil {
+		t.Fatal(err)
+	}
 
 	// Read reply
 	reply := make([]byte, 10) // 4 header + 4 addr + 2 port for IPv4
@@ -191,7 +207,9 @@ func TestSOCKS5_Allowed(t *testing.T) {
 	}
 
 	// Send HTTP request through the SOCKS5 tunnel
-	fmt.Fprintf(conn, "GET / HTTP/1.1\r\nHost: %s\r\nConnection: close\r\n\r\n", target.Listener.Addr().String())
+	if _, err := fmt.Fprintf(conn, "GET / HTTP/1.1\r\nHost: %s\r\nConnection: close\r\n\r\n", target.Listener.Addr().String()); err != nil {
+		t.Fatal(err)
+	}
 
 	br := bufio.NewReader(conn)
 	resp, err := http.ReadResponse(br, nil)
@@ -199,7 +217,7 @@ func TestSOCKS5_Allowed(t *testing.T) {
 		t.Fatal(err)
 	}
 	body, _ := io.ReadAll(resp.Body)
-	resp.Body.Close()
+	_ = resp.Body.Close()
 
 	if string(body) != "socks5 works" {
 		t.Fatalf("unexpected body: %q", body)
@@ -208,7 +226,7 @@ func TestSOCKS5_Allowed(t *testing.T) {
 
 func TestSOCKS5_AllowedDomain(t *testing.T) {
 	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprint(w, "socks5 domain works")
+		_, _ = fmt.Fprint(w, "socks5 domain works")
 	}))
 	defer target.Close()
 
@@ -221,10 +239,12 @@ func TestSOCKS5_AllowedDomain(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	// SOCKS5 handshake
-	conn.Write([]byte{0x05, 0x01, 0x00})
+	if _, err := conn.Write([]byte{0x05, 0x01, 0x00}); err != nil {
+		t.Fatal(err)
+	}
 	methodResp := make([]byte, 2)
 	if _, err := io.ReadFull(conn, methodResp); err != nil {
 		t.Fatal(err)
@@ -235,7 +255,9 @@ func TestSOCKS5_AllowedDomain(t *testing.T) {
 
 	// Send CONNECT request with domain name (ATYP=0x03)
 	var targetPort uint16
-	fmt.Sscanf(targetPortStr, "%d", &targetPort)
+	if _, err := fmt.Sscanf(targetPortStr, "%d", &targetPort); err != nil {
+		t.Fatal(err)
+	}
 
 	req := []byte{0x05, 0x01, 0x00, 0x03}    // VER, CMD=CONNECT, RSV, ATYP=DOMAIN
 	req = append(req, byte(len(targetHost))) // domain length
@@ -243,7 +265,9 @@ func TestSOCKS5_AllowedDomain(t *testing.T) {
 	portBuf := make([]byte, 2)
 	binary.BigEndian.PutUint16(portBuf, targetPort)
 	req = append(req, portBuf...)
-	conn.Write(req)
+	if _, err := conn.Write(req); err != nil {
+		t.Fatal(err)
+	}
 
 	// Read reply
 	reply := make([]byte, 10)
@@ -255,7 +279,9 @@ func TestSOCKS5_AllowedDomain(t *testing.T) {
 	}
 
 	// Send HTTP request through the SOCKS5 tunnel
-	fmt.Fprintf(conn, "GET / HTTP/1.1\r\nHost: %s\r\nConnection: close\r\n\r\n", target.Listener.Addr().String())
+	if _, err := fmt.Fprintf(conn, "GET / HTTP/1.1\r\nHost: %s\r\nConnection: close\r\n\r\n", target.Listener.Addr().String()); err != nil {
+		t.Fatal(err)
+	}
 
 	br := bufio.NewReader(conn)
 	resp, err := http.ReadResponse(br, nil)
@@ -263,7 +289,7 @@ func TestSOCKS5_AllowedDomain(t *testing.T) {
 		t.Fatal(err)
 	}
 	body, _ := io.ReadAll(resp.Body)
-	resp.Body.Close()
+	_ = resp.Body.Close()
 
 	if string(body) != "socks5 domain works" {
 		t.Fatalf("unexpected body: %q", body)
@@ -278,12 +304,16 @@ func TestSOCKS5_Denied(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	// SOCKS5 handshake
-	conn.Write([]byte{0x05, 0x01, 0x00})
+	if _, err := conn.Write([]byte{0x05, 0x01, 0x00}); err != nil {
+		t.Fatal(err)
+	}
 	methodResp := make([]byte, 2)
-	io.ReadFull(conn, methodResp)
+	if _, err := io.ReadFull(conn, methodResp); err != nil {
+		t.Fatal(err)
+	}
 
 	// CONNECT to a domain not on the allowlist
 	domain := "denied.example.com"
@@ -291,7 +321,9 @@ func TestSOCKS5_Denied(t *testing.T) {
 	req = append(req, byte(len(domain)))  // domain length
 	req = append(req, []byte(domain)...)  // domain
 	req = append(req, 0x01, 0xBB)         // port 443
-	conn.Write(req)
+	if _, err := conn.Write(req); err != nil {
+		t.Fatal(err)
+	}
 
 	// Read reply - expect not allowed
 	reply := make([]byte, 10)
@@ -313,8 +345,12 @@ func TestAutoDetect_UnknownProtocol(t *testing.T) {
 	}
 
 	// Send a byte that's neither SOCKS5 nor ASCII
-	conn.Write([]byte{0xFF, 0x01, 0x02})
-	conn.SetReadDeadline(time.Now().Add(2 * time.Second))
+	if _, err := conn.Write([]byte{0xFF, 0x01, 0x02}); err != nil {
+		t.Fatal(err)
+	}
+	if err := conn.SetReadDeadline(time.Now().Add(2 * time.Second)); err != nil {
+		t.Fatal(err)
+	}
 
 	// Connection should be closed by the proxy
 	buf := make([]byte, 100)
@@ -322,5 +358,5 @@ func TestAutoDetect_UnknownProtocol(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected connection to be closed")
 	}
-	conn.Close()
+	_ = conn.Close()
 }

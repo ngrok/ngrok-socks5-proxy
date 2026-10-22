@@ -73,7 +73,7 @@ func (s *Server) handleSOCKS5(conn net.Conn) {
 
 	if !hasNoAuth {
 		// Reject: no acceptable method
-		conn.Write([]byte{socks5Version, socks5AuthFail})
+		_, _ = conn.Write([]byte{socks5Version, socks5AuthFail})
 		s.log.Warn("SOCKS5: no acceptable auth method", "remote", conn.RemoteAddr())
 		return
 	}
@@ -146,7 +146,7 @@ func (s *Server) handleSOCKS5(conn net.Conn) {
 		s.socks5Reply(conn, replyCode)
 		return
 	}
-	defer target.Close()
+	defer func() { _ = target.Close() }()
 
 	// Send success reply
 	s.socks5Reply(conn, socks5ReplySuccess)
@@ -202,5 +202,5 @@ func (s *Server) socks5Reply(conn net.Conn, status byte) {
 		0, 0, 0, 0, // 0.0.0.0
 		0, 0, // port 0
 	}
-	conn.Write(reply)
+	_, _ = conn.Write(reply)
 }
